@@ -454,6 +454,58 @@ test('AWS CodeArtifact is supported with role to assume', () => {
   expect(outdir).toMatchSnapshot();
 });
 
+
+test('AWS CodeArtifact is supported by maven with AWS access keys', () => {
+  // GIVEN
+  const project = new TestProject();
+
+  const release = new Release(project, {
+    task: project.buildTask,
+    versionFile: 'version.json',
+    branch: 'main',
+    publishTasks: true, // to increase coverage
+  });
+
+  // WHEN
+  release.publisher.publishToMaven({
+    mavenRepositoryUrl: 'https://my_domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my_repo/',
+    codeArtifactOptions: {
+      accessKeyIdSecret: 'OTHER_AWS_ACCESS_KEY_ID',
+      secretAccessKeySecret: 'OTHER_AWS_SECRET_ACCESS_KEY',
+    },
+  });
+
+  // THEN
+  const outdir = synthSnapshot(project);
+  expect(outdir).toMatchSnapshot();
+});
+
+
+test('AWS CodeArtifact maven is supported with role to assume', () => {
+  // GIVEN
+  const project = new TestProject();
+  const roleArn = 'role-arn';
+
+  const release = new Release(project, {
+    task: project.buildTask,
+    versionFile: 'version.json',
+    branch: 'main',
+    publishTasks: true, // to increase coverage
+  });
+
+  // WHEN
+  release.publisher.publishToMaven({
+    mavenRepositoryUrl: 'https://my_domain-111122223333.d.codeartifact.us-west-2.amazonaws.com/maven/my_repo/',
+    codeArtifactOptions: {
+      roleToAssume: roleArn,
+    },
+  });
+
+  // THEN
+  const outdir = synthSnapshot(project);
+  expect(outdir).toMatchSnapshot();
+});
+
 test('can be modified with escape hatches', () => {
   // GIVEN
   const project = new TestProject();

@@ -282,10 +282,15 @@ export class Publisher extends Component {
   public publishToMaven(options: MavenPublishOptions = {}) {
     const isGitHubPackages = options.mavenRepositoryUrl?.startsWith(GITHUB_PACKAGES_MAVEN_REPOSITORY);
     const isGitHubActor = isGitHubPackages && options.mavenUsername == undefined;
-    const mavenServerId = options.mavenServerId ?? (isGitHubPackages ? 'github' : undefined);
+    const isAwsCodeArtifact = isAwsCodeArtifactRegistry(options.mavenRepositoryUrl);
+    const mavenServerId = options.mavenServerId ?? (isGitHubPackages ? 'github' : (isAwsCodeArtifact ? 'codeartifact' : undefined));
 
     if (isGitHubPackages && mavenServerId != 'github') {
       throw new Error('publishing to GitHub Packages requires the "mavenServerId" to be "github"');
+    }
+
+    if (isAwsCodeArtifact && mavenServerId != 'codeartifact') {
+      throw new Error('publishing to AWS CodeArtifact requires the "mavenServerId" to be "codeartifact"');
     }
 
     this.addPublishJob((_branch, _branchOptions) => ({
@@ -299,11 +304,14 @@ export class Publisher extends Component {
         MAVEN_REPOSITORY_URL: options.mavenRepositoryUrl,
       },
       workflowEnv: {
-        MAVEN_GPG_PRIVATE_KEY: isGitHubPackages ? undefined : secret(options.mavenGpgPrivateKeySecret ?? 'MAVEN_GPG_PRIVATE_KEY'),
-        MAVEN_GPG_PRIVATE_KEY_PASSPHRASE: isGitHubPackages ? undefined : secret(options.mavenGpgPrivateKeyPassphrase ?? 'MAVEN_GPG_PRIVATE_KEY_PASSPHRASE'),
-        MAVEN_PASSWORD: secret(options.mavenPassword ?? (isGitHubPackages ? 'GITHUB_TOKEN' : 'MAVEN_PASSWORD')),
+        MAVEN_GPG_PRIVATE_KEY: isGitHubPackages || isAwsCodeArtifact ? undefined : secret(options.mavenGpgPrivateKeySecret ?? 'MAVEN_GPG_PRIVATE_KEY'),
+        MAVEN_GPG_PRIVATE_KEY_PASSPHRASE: isGitHubPackages || isAwsCodeArtifact ? undefined : secret(options.mavenGpgPrivateKeyPassphrase ?? 'MAVEN_GPG_PRIVATE_KEY_PASSPHRASE'),
+        MAVEN_PASSWORD: isAwsCodeArtifact ? undefined : secret(options.mavenPassword ?? (isGitHubPackages ? 'GITHUB_TOKEN' : 'MAVEN_PASSWORD')),
         MAVEN_USERNAME: isGitHubActor ? '${{ github.actor }}' : secret(options.mavenUsername ?? 'MAVEN_USERNAME'),
-        MAVEN_STAGING_PROFILE_ID: isGitHubPackages ? undefined : secret(options.mavenStagingProfileId ?? 'MAVEN_STAGING_PROFILE_ID'),
+        MAVEN_STAGING_PROFILE_ID: isGitHubPackages || isAwsCodeArtifact ? undefined : secret(options.mavenStagingProfileId ?? 'MAVEN_STAGING_PROFILE_ID'),
+        // if we are publishing to AWS CodeArtifact, pass AWS access keys that will be used to generate NPM_TOKEN using AWS CLI.
+        AWS_ACCESS_KEY_ID: isAwsCodeArtifact ? secret(options.codeArtifactOptions?.accessKeyIdSecret ?? 'AWS_ACCESS_KEY_ID') : undefined,
+        AWS_SECRET_ACCESS_KEY: isAwsCodeArtifact ? secret(options.codeArtifactOptions?.secretAccessKeySecret ?? 'AWS_SECRET_ACCESS_KEY') : undefined,
       },
       permissions: {
         contents: JobPermission.READ,
@@ -712,6 +720,13 @@ export interface MavenPublishOptions {
    * @default "MAVEN_STAGING_PROFILE_ID" or not set when using GitHub Packages
    */
   readonly mavenStagingProfileId?: string;
+
+  /**
+   * Options for publishing npm package to AWS CodeArtifact.
+   *
+   * @default - undefined
+   */
+  readonly codeArtifactOptions?: CodeArtifactOptions;
 }
 
 /**
